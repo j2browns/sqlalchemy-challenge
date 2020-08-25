@@ -1,5 +1,10 @@
+######################################################33
+#SQLAlchemy Challenge Homework 
+#Jeff Brown
+
 ###Flask portion of assignment
 
+#Importing required functions
 import numpy as np
 import pandas as pd
 import datetime as dt
@@ -9,8 +14,9 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func,  inspect, distinct
 
+#Setting up connection to SQL-Lite and Base Connections
+#This work is based on testing in Jupyter Notebook from Same Assignment
 engine = create_engine("sqlite:///Resources/hawaii.sqlite")
-#checking names of tables contained in sql database
 Base = automap_base()
 Base.prepare(engine, reflect=True)
 #creating object for measurement and station
@@ -88,7 +94,7 @@ precip_group_df = precip_group_df.set_index('Date')
 precip_group_df.sort_index(inplace=True)
 precip_group_df
 
-####output field 
+####output Dictionnary - to be used in JSON
 precip_dictionary = precip_group_df.to_dict('dict')
 ####################################################################
 
@@ -128,6 +134,7 @@ for record in temp_survey:
     (Me_date, Me_stn,Me_temp) = record
     temp_survey_df = temp_survey_df.append({"Station":Me_date,"Date":Me_stn,"Temp":Me_temp}, ignore_index = True)
 
+####output Dictionnary - to be used in JSON
 temp_survey_dict = temp_survey_df.to_dict('index')
 
 
@@ -142,6 +149,17 @@ app = Flask(__name__)
 #################################################
 # Flask Routes
 #################################################
+#################################################
+#SQLAlchemy has a thread error. Must remake connection to database and create engine.
+engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+#checking names of tables contained in sql database
+Base = automap_base()
+Base.prepare(engine, reflect=True)
+#creating object for measurement and station
+Measurement = Base.classes.measurement
+Station = Base.classes.station
+session = Session(engine)
+##################################################
 @app.route("/")
 def welcome():
     return (
@@ -182,23 +200,14 @@ def precipitation():
 def tobs():
     """Return information about temperature in most active site over 1 year period"""
     
+    #solution provided above before flask code
     return jsonify(temp_survey_dict)
-#################################################
+
 
 @app.route("/api/v1.0/<date>")
 def date_to_end(date):
     """Return information about temperature in most active site over 1 year period"""
     
-    #SQLAlchemy has a thread error. Must remake connection to database and create engine.
-    engine = create_engine("sqlite:///Resources/hawaii.sqlite")
-    #checking names of tables contained in sql database
-    Base = automap_base()
-    Base.prepare(engine, reflect=True)
-    #creating object for measurement and station
-    Measurement = Base.classes.measurement
-    Station = Base.classes.station
-    session = Session(engine)
-    
     sel = [ Measurement.date, Measurement.prcp] #pulling only date and precipitation.
     weather_data = session.query(*sel).all() 
     session.close()
@@ -212,31 +221,24 @@ def date_to_end(date):
             max_date = ME_date
         if ME_date < str(min_date_record):
             min_date_record = ME_date
-    sel = [ func.min(Measurement.tobs), func.avg(Measurement.tobs),func.max(Measurement.tobs)] 
-    temp_detail, = session.query(*sel).\
-        filter((Measurement.date <= max_date)& (Measurement.date >= date)).all()
-    session.close()
-    temp_to_end_dict = {"Start_Date":date, "End_Date":max_date, "Min_Temp":temp_detail[0],
-                        "Avg_Temp":temp_detail[1],"Max_Temp":temp_detail[2]}
 
-    return jsonify(temp_to_end_dict)
-    #return jsonify({"test": f"Character with real_name {date} not found."}), 404
+ #includes some basic error handling for date range   
+    if (date >= min_date_record) and (date <= max_date):
+        sel = [ func.min(Measurement.tobs), func.avg(Measurement.tobs),func.max(Measurement.tobs)] 
+        temp_detail, = session.query(*sel).\
+            filter((Measurement.date <= max_date)& (Measurement.date >= date)).all()
+        session.close()
+        temp_to_end_dict = {"Start_Date":date, "End_Date":max_date, "Min_Temp":temp_detail[0],
+                            "Avg_Temp":temp_detail[1],"Max_Temp":temp_detail[2]}
+        return jsonify(temp_to_end_dict)
+    else:
+        return jsonify({"test": f"Entered date {date} is not in range min: {min_date_record} and max:{max_date}"}), 404
 #################################################
 
 @app.route("/api/v1.0/<date1>/<date2>")
 def date_range(date1,date2):
     """Return information about temperature in most active site over 1 year period"""
-    
-    #SQLAlchemy has a thread error. Must remake connection to database and create engine.
-    engine = create_engine("sqlite:///Resources/hawaii.sqlite")
-    #checking names of tables contained in sql database
-    Base = automap_base()
-    Base.prepare(engine, reflect=True)
-    #creating object for measurement and station
-    Measurement = Base.classes.measurement
-    Station = Base.classes.station
-    session = Session(engine)
-    
+      
     sel = [ Measurement.date, Measurement.prcp] #pulling only date and precipitation.
     weather_data = session.query(*sel).all() 
     session.close()
@@ -251,20 +253,18 @@ def date_range(date1,date2):
         if ME_date < str(min_date_record):
             min_date_record = ME_date
 
-    sel = [ func.min(Measurement.tobs), func.avg(Measurement.tobs),func.max(Measurement.tobs)] 
-    temp_detail, = session.query(*sel).\
-        filter((Measurement.date <= date2)& (Measurement.date >= date1)).all()
-    session.close()
-    temp_range = {"Start_Date":date1, "End_Date":date2, "Min_Temp":round(temp_detail[0],1),
-                        "Avg_Temp":round(temp_detail[1],1),"Max_Temp":round(temp_detail[2],1)}
-
-    return jsonify(temp_range)
+#includes some basic error handling for date range
+    if (date1 >= min_date_record) and (date2 <= max_date) and (date2 > min_date_record) and (date1 < max_date):
+        sel = [ func.min(Measurement.tobs), func.avg(Measurement.tobs),func.max(Measurement.tobs)] 
+        temp_detail, = session.query(*sel).\
+            filter((Measurement.date <= date2)& (Measurement.date >= date1)).all()
+        session.close()
+        temp_range = {"Start_Date":date1, "End_Date":date2, "Min_Temp":round(temp_detail[0],1),
+                            "Avg_Temp":round(temp_detail[1],1),"Max_Temp":round(temp_detail[2],1)}
+        return jsonify(temp_range)
+    else:
+        return jsonify({"test": f"Entered dates min:{date1} and max:{date2} is not in range min: {min_date_record} and max:{max_date}"}), 404
     
-    #return jsonify({"test": f"Character with real_name {date1} and {date2} not found."}), 404
-
-
-
-
 
 if __name__ == "__main__":
     app.run(debug=True)
